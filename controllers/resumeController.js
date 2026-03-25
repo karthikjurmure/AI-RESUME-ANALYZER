@@ -23,81 +23,7 @@ exports.getResumes = async (req, res) => {
     });
   }
 };
-exports.uploadResume = async (req, res) => {
-  try {
-    const filePath = req.file.path;
-    const text = await pdfService.extractText(filePath);
-    const aiAnalysis = await aiService.analyzeResume(text);
 
-    let parsedAnalysis = {};
-
-    try {
-      const jsonMatch = aiAnalysis.match(/\{[\s\S]*\}/);
-      if (jsonMatch) {
-        parsedAnalysis = JSON.parse(jsonMatch[0]);
-      }
-    } catch (error) {
-      console.log("AI response parsing failed:", error);
-    }
-
-    const resume = await Resume.create({
-      fileName: req.file.filename,
-      filePath,
-      text,
-      analysis: parsedAnalysis,
-      status: "processed"
-    });
-
-    res.json({
-      message: "Resume uploaded",
-      resumeId: resume._id
-    });
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-      message: "Upload failed"
-    });
-  }
-};
-exports.matchResumeWithJob = async (req, res) => {
-  try {
-    const { resumeId, jobDescription } = req.body;
-
-    const resume = await Resume.findById(resumeId);
-
-    if (!resume) {
-      return res.status(404).json({ message: "Resume not found" });
-    }
-
-    const resumeSkills = resume.analysis.skills;
-
-    const aiResult = await aiService.extractJobSkills(jobDescription);
-
-    let parsedJobSkills = [];
-
-    const jsonMatch = aiResult.match(/\{[\s\S]*\}/);
-
-    if (jsonMatch) {
-      parsedJobSkills = JSON.parse(jsonMatch[0]).skills;
-    }
-
-    const result = matchingService.matchSkills(resumeSkills, parsedJobSkills);
-
-    res.json({
-      resumeSkills,
-      jobSkills: parsedJobSkills,
-      matchedSkills: result.matchedSkills,
-      missingSkills: result.missingSkills,
-      atsScore: result?.atsScore ?? 0
-    });
-
-  } catch (error) {
-    console.log(error);
-    res.status(500).json({
-      message: "Matching failed"
-    });
-  }
-};
 exports.analyzeResume = async (req, res) => {
   try {
 
@@ -174,6 +100,17 @@ exports.analyzeResume = async (req, res) => {
     const suggestions = suggestionData?.suggestions || [];
 
     // 🔵 7. Final Response
+    const savedResume = await Resume.create({
+      fileName: req.file.filename,
+      filePath,
+      text,
+      atsScore: result?.atsScore ?? 0,
+      matchedSkills: result.matchedSkills,
+      missingSkills: result.missingSkills,
+      suggestions,
+      createdAt: new Date()
+    });
+
     res.json({
       atsScore: result?.atsScore ?? 0,
       matchedSkills: result.matchedSkills,

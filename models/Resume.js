@@ -3,18 +3,14 @@ const resumeSchema = new mongoose.Schema({
     fileName: String,
     filePath: String,
     text: String,
-    analysis: {
-  type: Object,
-  default: {}
-},
-    status: {
-        type: String,
-        enum: ["uploaded", "processed"],
-        default: "uploaded"
-    },
+    atsScore: Number,
+    matchedSkills: [String],
+    missingSkills: [String],
+    suggestions: [String],
+
     createdAt: {
-        type: Date,
-        default: Date.now
+      type: Date,
+      default: Date.now
     }
 });
 module.exports = mongoose.model("Resume", resumeSchema);
