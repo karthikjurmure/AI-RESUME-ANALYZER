@@ -3,7 +3,10 @@ import requests
 
 st.title("📄 AI Resume Analyzer")
 
-# --- SIDEBAR OR TOP SECTION FOR PREVIOUS REPORTS ---
+# Initialize session state for storing analysis results
+if 'analysis_result' not in st.session_state:
+    st.session_state.analysis_result = None
+
 if st.button("Load Previous Reports"):
     try:
         res = requests.get("http://localhost:5000/api/resume")
@@ -36,8 +39,6 @@ if st.button("Load Previous Reports"):
         st.error(f"Backend connection failed: {e}")
 
 st.divider()
-
-# --- ANALYSIS SECTION ---
 uploaded_file = st.file_uploader("Upload Resume (PDF)", type=["pdf"])
 job_description = st.text_area("Enter Job Description")
 
@@ -47,10 +48,9 @@ if st.button("Analyze Resume"):
     else:
         with st.spinner("Analyzing..."):
             try:
-                # Correct way to send file and data
                 files = {"resume": (uploaded_file.name, uploaded_file, "application/pdf")}
                 data = {"jobDescription": job_description}
-                
+
                 response = requests.post(
                     "http://localhost:5000/api/resume/analyze",
                     files=files,
@@ -59,20 +59,21 @@ if st.button("Analyze Resume"):
 
                 if response.status_code == 200:
                     result = response.json()
+                    st.session_state.analysis_result = result  # Store result in session state
                     st.success("Analysis Complete!")
                     st.subheader(f"🎯 ATS Score: {result.get('atsScore', 0)}%")
                     st.subheader("🎯 Matching Skills")
-                    if result['matchedSkills']:
-                        st.write(" • " + " • ".join(result['matchedSkills']))
+                    if result.get("matchedSkills"):
+                        st.write(" • " + " • ".join(result["matchedSkills"]))
                     else:
                         st.write("😞 Ohh no! No matching skills found.")
                     st.subheader("🎯 Missing Skills")
-                    if result['missingSkills']:
-                        st.write(" • " + " • ".join(result['missingSkills']))
+                    if result.get("missingSkills"):
+                        st.write(" • " + " • ".join(result["missingSkills"]))
                     else:
                         st.write("😀 Hurray! No missing skills found.")
                     st.subheader("💡 Suggestions")
-                    suggestions=result.get('suggestions', [])
+                    suggestions = result.get("suggestions", [])
                     if suggestions:
                         for s in suggestions:
                             st.write(f"- {s}")
@@ -81,4 +82,30 @@ if st.button("Analyze Resume"):
                 else:
                     st.error(f"Server Error: {response.status_code} - {response.text}")
             except Exception as e:
-                st.error(f"Connection Error: Is your backend running on port 5000?")
+                st.error(f"Connection Error: Is your backend running on port 5000? {e}")
+
+
+    if st.session_state.analysis_result:
+        try:
+            # Define a function to fetch the PDF binary from your backend
+            def get_pdf_data():
+                response = requests.post(
+                    "http://localhost:5000/api/resume/download-report",
+                    json=st.session_state.analysis_result
+                )
+                if response.status_code == 200:
+                    return response.content  # Returns the raw binary
+                else:
+                    st.error("Backend failed to generate PDF.")
+                    return None
+            st.download_button(
+                label="📥 Download ATS Report",
+                data=get_pdf_data(),
+                file_name="ats_report.pdf",
+                mime="application/pdf"
+            )
+        except Exception as e:
+            st.error(f"Error connecting to backend: {e}")
+    else:
+        st.info("Please complete an analysis first to enable the PDF download.")
+  

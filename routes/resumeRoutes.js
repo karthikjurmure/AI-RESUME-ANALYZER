@@ -10,5 +10,5 @@ router.post(
   upload.single("resume"),
   resumeController.analyzeResume
 );
-
+router.post("/download-report",resumeController.generatePDFReport);
 module.exports = router;

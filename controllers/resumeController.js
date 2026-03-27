@@ -3,6 +3,7 @@ const pdfService = require("../services/pdfService");
 const aiService = require("../services/aiServices");
 const axios = require("axios");
 const matchingService = require("../services/matchingService");
+const pdfreportService=require("../services/pdfreportService");
 function extractJSON(text) {
   try {
     const match = text.match(/\{[\s\S]*\}/);
@@ -124,6 +125,29 @@ exports.analyzeResume = async (req, res) => {
 
     res.status(500).json({
       message: "Analysis failed",
+      error: error.message
+    });
+  }
+};
+exports.generatePDFReport=async(req,res)=>{
+  try{
+    const data = req.body;
+    if (!data || Object.keys(data).length === 0) {
+      return res.status(400).json({
+        message: 'Report payload is required in request body',
+      });
+    }
+    const {atsScore, matchedSkills, missingSkills, suggestions} = data;
+    const pdfBuffer = await pdfreportService.generatePDFReport({atsScore, matchedSkills, missingSkills, suggestions});
+    res.set({
+      "Content-Type":"application/pdf",
+      "Content-Disposition":"attachment; filename=ats_report.pdf"
+    });
+    res.send(pdfBuffer);
+  } catch (error) {
+    console.log("ERROR 👉", error.response?.data || error.message || error);
+    res.status(500).json({
+      message: "Failed to generate PDF report",
       error: error.message
     });
   }
