@@ -14,16 +14,6 @@ function extractJSON(text) {
     return null;
   }
 }
-exports.getResumes = async (req, res) => {
-  try {
-    const resumes = await Resume.find();
-    res.json(resumes);
-  } catch (err) {
-    res.status(500).json({
-      message: "Error fetching resumes"
-    });
-  }
-};
 
 exports.analyzeResume = async (req, res) => {
   try {
@@ -101,16 +91,24 @@ exports.analyzeResume = async (req, res) => {
     const suggestions = suggestionData?.suggestions || [];
 
     // 🔵 7. Final Response
-    const savedResume = await Resume.create({
+    // 🔒 Save suggestions only if logged in
+    const reportData = {
       fileName: req.file.filename,
       filePath,
       text,
       atsScore: result?.atsScore ?? 0,
       matchedSkills: result.matchedSkills,
       missingSkills: result.missingSkills,
-      suggestions,
       createdAt: new Date()
-    });
+    };
+
+    if (req.user) {
+      // 🔒 Save reports WITH userId
+      reportData.userId = req.user.userId;
+      reportData.suggestions = suggestions;
+    }
+
+    const savedResume = await Resume.create(reportData);
 
     res.json({
       atsScore: result?.atsScore ?? 0,
@@ -152,3 +150,18 @@ exports.generatePDFReport=async(req,res)=>{
     });
   }
 };
+// 🔒 Get Reports
+exports.getReports=async(req,res)=>{
+  try{
+    const reports=await Resume.find({
+      userId: req.user.userId
+    });
+    res.json(reports);
+  } catch (error) {
+    console.log("ERROR 👉", error.response?.data || error.message || error);
+    res.status(500).json({
+      message: "Failed to retrieve reports",
+      error: error.message
+    });
+  }
+}
