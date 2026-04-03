@@ -6,35 +6,61 @@ st.title("📄 AI Resume Analyzer")
 # Initialize session state
 if "token" not in st.session_state:
     st.session_state.token = None
+if "user_email" not in st.session_state:
+    st.session_state.user_email = None
 if "analysis_result" not in st.session_state:
     st.session_state.analysis_result = None
+if "loaded_reports" not in st.session_state:
+    st.session_state.loaded_reports = None
 
 # Login & Register Section
-st.sidebar.subheader("Login")
-email = st.sidebar.text_input("Email").lower().strip()
-password = st.sidebar.text_input("Password", type="password")
+st.sidebar.subheader("Authentication")
 
-if st.sidebar.button("Login"):
-    try:
-        response = requests.post("http://localhost:5000/api/auth/login", json={"email": email, "password": password})
-        if response.status_code == 200:
-            data = response.json()
-            st.session_state.token = data["token"]
-            st.success("Login successful!")
-        else:
-            st.error("Invalid email or password")
-    except Exception as e:
-        st.error(f"Login failed: {e}")
+if st.session_state.token:
+    # User is logged in
+    st.sidebar.success("✅ Logged In")
+    st.sidebar.info(f"📧 {st.session_state.user_email}")
+    if st.sidebar.button("🚪 Logout"):
+        st.session_state.token = None
+        st.session_state.user_email = None
+        st.session_state.analysis_result = None
+        st.session_state.loaded_reports = None
+        st.success("Logged out successfully!")
+        st.rerun()
+else:
+    # User is not logged in
+    email = st.sidebar.text_input("Email").lower().strip()
+    password = st.sidebar.text_input("Password", type="password")
 
-if st.sidebar.button("Register"):
-    try:
-        requests.post("http://localhost:5000/api/auth/register", json={
-            "email": email,
-            "password": password
-        })
-        st.success("Registration successful! Please login now.")
-    except Exception as e:
-        st.error(f"Registration failed: {e}")
+    if st.sidebar.button("Login"):
+        try:
+            response = requests.post("http://localhost:5000/api/auth/login", json={"email": email, "password": password})
+            if response.status_code == 200:
+                data = response.json()
+                st.session_state.token = data["token"]
+                st.session_state.user_email = email
+                st.success("Login successful!")
+                st.rerun()
+            else:
+                st.error("Invalid email or password")
+        except Exception as e:
+            st.error(f"Login failed: {e}")
+
+    if st.sidebar.button("Register"):
+        try:
+            response = requests.post("http://localhost:5000/api/auth/register", json={
+                "email": email,
+                "password": password
+            })
+            if response.status_code == 201:
+                st.success("Registration successful! Please login now.")
+            elif response.status_code == 400:
+                error_msg = response.json().get("message", "Registration failed")
+                st.error(error_msg)
+            else:
+                st.error("Registration failed. Please try again.")
+        except Exception as e:
+            st.error(f"Registration failed: {e}")
 
 # Load Previous Reports Section
 if st.session_state.token:
@@ -49,9 +75,8 @@ if st.session_state.token:
             if res.status_code == 200:
                 reports = res.json()
                 if reports:
+                    st.session_state.loaded_reports = reports
                     st.sidebar.success("Reports loaded!")
-                    for r in reports:
-                        st.sidebar.write(f"Score: {r.get('atsScore', 'N/A')}%")
                 else:
                     st.sidebar.info("No previous reports found.")
             else:
@@ -98,6 +123,20 @@ if st.button("Analyze Resume"):
                     # Save to state
                     st.session_state.analysis_result = response.json()
                     st.success("Analysis Complete!")
+                    
+                    # Auto-refresh previous reports if user is logged in
+                    if st.session_state.token:
+                        try:
+                            res = requests.get(
+                                "http://localhost:5000/api/resume/reports",
+                                headers={
+                                    "Authorization": f"Bearer {st.session_state.token}"
+                                }
+                            )
+                            if res.status_code == 200:
+                                st.session_state.loaded_reports = res.json()
+                        except Exception as e:
+                            pass  # Silently fail if auto-refresh doesn't work
                 else:
                     st.error(f"Server Error: {response.status_code} - {response.text}")
             except Exception as e:
@@ -131,6 +170,72 @@ if st.session_state.analysis_result:
                 st.write(f"- {s}")
         
         # PDF Download Logic
-        # (Keep your existing PDF generation code here)
+        st.divider()
+        if st.button("📥 Download PDF Report"):
+            try:
+                pdf_payload = {
+                    "atsScore": result.get("atsScore", 0),
+                    "matchedSkills": result.get("matchedSkills", []),
+                    "missingSkills": result.get("missingSkills", []),
+                    "suggestions": suggestions
+                }
+                
+                pdf_response = requests.post(
+                    "http://localhost:5000/api/resume/download-report",
+                    json=pdf_payload
+                )
+                
+                if pdf_response.status_code == 200:
+                    st.download_button(
+                        label="💾 Click to Download PDF",
+                        data=pdf_response.content,
+                        file_name="ats_report.pdf",
+                        mime="application/pdf"
+                    )
+                    st.success("PDF generated! Click above to download.")
+                else:
+                    st.error("Failed to generate PDF report")
+            except Exception as e:
+                st.error(f"Error generating PDF: {e}")
     else:
         st.info("🔒 Login to unlock suggestions and PDF download")
+
+# Display Previous Reports in Tab Format
+if st.session_state.loaded_reports:
+    st.divider()
+    st.subheader("📋 Previous Reports")
+    
+    # Create tabs for each report
+    tab_list = [f"Report {i+1}" for i in range(len(st.session_state.loaded_reports))]
+    tabs = st.tabs(tab_list)
+    
+    for idx, (tab, report) in enumerate(zip(tabs, st.session_state.loaded_reports)):
+        with tab:
+            # ATS Score
+            st.subheader(f"🎯 ATS Score: {report.get('atsScore', 0)}%")
+            
+            # Matching Skills
+            st.subheader("✅ Matching Skills")
+            matched_skills = report.get("matchedSkills", [])
+            if matched_skills:
+                st.write(" • " + " • ".join(matched_skills))
+            else:
+                st.write("No matching skills found.")
+
+            # Missing Skills
+            st.subheader("❌ Missing Skills")
+            missing_skills = report.get("missingSkills", [])
+            if missing_skills:
+                st.write(" • " + " • ".join(missing_skills))
+            else:
+                st.write("No missing skills found.")
+            
+            # Suggestions
+            st.subheader("💡 Suggestions")
+            suggestions = report.get("suggestions", [])
+            if suggestions:
+                for s in suggestions:
+                    st.write(f"- {s}")
+            else:
+                st.write("No suggestions available.")
+            
