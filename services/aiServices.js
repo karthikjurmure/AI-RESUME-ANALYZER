@@ -135,3 +135,34 @@ Return ONLY JSON:
 
   return await callAI(prompt);
 };
+
+// 🔹 Link Auditor Evaluator
+exports.auditLinks = async (links) => {
+  if (!links || links.length === 0) return null;
+  
+  const prompt = `
+You are a Technical Career Consultant reviewing links found in a candidate's resume.
+
+Analyze the following links:
+${JSON.stringify(links, null, 2)}
+
+For each link, check:
+1. Is the username/slug professional (e.g., avoid cool-gamer-99 style usernames)?
+2. Is the URL secure (HTTPS)? Flag any HTTP or shortened URLs (bit.ly, tinyurl, etc.) as risky.
+3. What should the recruiter find on that platform, and is the link likely to meet expectations?
+
+Then produce a short list of ACTIONABLE improvement suggestions the candidate should make to their online presence.
+
+Rules:
+- Write each suggestion as a single, concise, plain-English sentence (no markdown, no headers, no bullet symbols).
+- Do NOT include table formatting.
+- Do NOT include a "Key Improvement Suggestion" section.
+- Each suggestion must be self-contained and specific (mention the platform or link involved).
+- Return ONLY a valid JSON array of strings, nothing else.
+
+Example format:
+["Replace the bit.ly link with a direct HTTPS portfolio URL to avoid corporate security filters.", "Rename the GitHub username from cool-gamer-99 to a professional handle matching your name."]
+`;
+
+  return await callAI(prompt);
+};

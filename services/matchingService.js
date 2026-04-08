@@ -57,43 +57,52 @@ exports.matchSkills = async (rawResumeSkills, rawJobSkills) => {
       };
     }
     console.log("🚀 Pinging Python Fast-Filter...");
+    console.log("📤 Sending to Python → resumeSkills:", resumeSkills);
+    console.log("📤 Sending to Python → jobSkills:", jobSkills);
     const pyResponse = await axios.post('http://127.0.0.1:8000/match-skills', {
       resume_skills: resumeSkills,
       jd_skills: jobSkills
     });
 
     const pairs = pyResponse.data.pairs || [];
-
-    // Helper to deeply normalize strings for comparison
+    console.log("📥 Python returned", pairs.length, "pairs");
     const sanitize = (str) => String(str || "").toLowerCase().replace(/[^a-z0-9]/g, '');
 
-    // 2. Triage the pairs based on thresholds
     const matchedJDSanitized = new Set();
-    const ambiguousPairs = [];
-    const matchesDetails = []; // For detailed reasoning logs
+    const matchesDetails = [];
 
+    // Group all pairs by JD skill, keeping only the best resume match per JD skill
+    const bestCandidatePerJD = {};
     pairs.forEach(pair => {
       const { resume_skill, jd_skill, score } = pair;
+      const key = sanitize(jd_skill);
+
       if (score > 0.85) {
-        // Direct Match (High Confidence)
-        matchedJDSanitized.add(sanitize(jd_skill));
+        // Direct high-confidence match — mark as matched immediately
+        matchedJDSanitized.add(key);
         matchesDetails.push({
           resume_skill,
           jd_skill,
           reasoning: "High-confidence local semantic match (> 0.85).",
           score
         });
-      } else if (score >= 0.30 && score <= 0.85) {
-        // Ambiguous Match -> Needs Intelligence Layer
-        ambiguousPairs.push({ resume_skill, jd_skill });
+      } else if (score >= 0.30) {
+        // Track the best candidate for each JD skill in the ambiguous zone
+        if (!bestCandidatePerJD[key] || score > bestCandidatePerJD[key].score) {
+          bestCandidatePerJD[key] = { resume_skill, jd_skill, score };
+        }
       }
-      // Everything under 0.30 is completely ignored as irrelevant.
     });
 
-    console.log(`🧠 High Confidence Matches: ${matchedJDSanitized.size}`);
-    console.log(`🧠 Ambiguous Pairs requiring LLM: ${ambiguousPairs.length}`);
+    // Build final ambiguous list: only unmatched JD skills with their best candidate
+    const ambiguousPairs = Object.values(bestCandidatePerJD)
+      .filter(p => !matchedJDSanitized.has(sanitize(p.jd_skill)))
+      .map(p => ({ resume_skill: p.resume_skill, jd_skill: p.jd_skill }));
 
-    // 3. Delegate to Intelligence Layer for Ambiguous Cases
+    console.log(`🧠 High Confidence Matches: ${matchedJDSanitized.size}`, [...matchedJDSanitized]);
+    console.log(`🧠 Ambiguous Pairs requiring LLM: ${ambiguousPairs.length}`, ambiguousPairs);
+
+
     if (ambiguousPairs.length > 0) {
       console.log("🚀 Pinging OpenRouter Intelligence Layer...");
       const aiResponse = await aiService.reviewAmbiguousMatches(ambiguousPairs);
@@ -143,6 +152,7 @@ exports.matchSkills = async (rawResumeSkills, rawJobSkills) => {
       matches_details: matchesDetails
     };
 
+    console.log("✅ FINAL PAYLOAD → atsScore:", atsScore, "matched:", finalMatchedJD, "missing:", missingJD);
     return finalPayload;
 
   } catch (error) {
