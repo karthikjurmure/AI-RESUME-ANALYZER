@@ -3,7 +3,7 @@ const pdfService = require("../services/pdfService");
 const aiService = require("../services/aiServices");
 const axios = require("axios");
 const matchingService = require("../services/matchingService");
-const pdfreportService=require("../services/pdfreportService");
+const pdfreportService = require("../services/pdfreportService");
 function extractJSON(text) {
   try {
     const match = text.match(/\{[\s\S]*\}/);
@@ -46,34 +46,28 @@ exports.analyzeResume = async (req, res) => {
 
     // 🔵 3. AI Resume Analysis
     const aiResume = await aiService.analyzeResume(text);
-    console.log("AI Resume 👉", aiResume);
-
     const resumeData = extractJSON(aiResume);
-
-    if (!resumeData || !resumeData.skills) {
+    const resumeSkills = resumeData ? resumeData.skills : [];
+    
+    if (!resumeSkills || resumeSkills.length === 0) {
       return res.status(400).json({
         message: "Failed to extract resume data"
       });
     }
 
-    const resumeSkills = resumeData.skills;
-
     // 🔵 4. AI Job Skills
     const aiJob = await aiService.extractJobSkills(jobDescription);
-    console.log("AI Job 👉", aiJob);
-
     const jobData = extractJSON(aiJob);
-
-    if (!jobData || !jobData.skills) {
+    const jobSkills = jobData ? jobData.skills : [];
+    
+    if (!jobSkills || jobSkills.length === 0) {
       return res.status(400).json({
         message: "Failed to extract job data"
       });
     }
 
-    const jobSkills = jobData.skills;
-
     // 🔵 5. Skill Matching
-    const result = matchingService.matchSkills(
+    const result = await matchingService.matchSkills(
       resumeSkills,
       jobSkills
     );
@@ -127,19 +121,19 @@ exports.analyzeResume = async (req, res) => {
     });
   }
 };
-exports.generatePDFReport=async(req,res)=>{
-  try{
+exports.generatePDFReport = async (req, res) => {
+  try {
     const data = req.body;
     if (!data || Object.keys(data).length === 0) {
       return res.status(400).json({
         message: 'Report payload is required in request body',
       });
     }
-    const {atsScore, matchedSkills, missingSkills, suggestions} = data;
-    const pdfBuffer = await pdfreportService.generatePDFReport({atsScore, matchedSkills, missingSkills, suggestions});
+    const { atsScore, matchedSkills, missingSkills, suggestions } = data;
+    const pdfBuffer = await pdfreportService.generatePDFReport({ atsScore, matchedSkills, missingSkills, suggestions });
     res.set({
-      "Content-Type":"application/pdf",
-      "Content-Disposition":"attachment; filename=ats_report.pdf"
+      "Content-Type": "application/pdf",
+      "Content-Disposition": "attachment; filename=ats_report.pdf"
     });
     res.send(pdfBuffer);
   } catch (error) {
@@ -151,9 +145,9 @@ exports.generatePDFReport=async(req,res)=>{
   }
 };
 // 🔒 Get Reports
-exports.getReports=async(req,res)=>{
-  try{
-    const reports=await Resume.find({
+exports.getReports = async (req, res) => {
+  try {
+    const reports = await Resume.find({
       userId: req.user.userId
     });
     res.json(reports);

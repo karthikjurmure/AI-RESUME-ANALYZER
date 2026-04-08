@@ -1,2 +1,7 @@
 .env
 *.md
+.venv/
+node_modules/
+__pycache__/
+*.pdf
+.DS_Store
