@@ -204,16 +204,40 @@ if st.session_state.analysis_result:
 if st.session_state.loaded_reports:
     st.divider()
     st.subheader("📋 Previous Reports")
-    
+
     # Create tabs for each report
     tab_list = [f"Report {i+1}" for i in range(len(st.session_state.loaded_reports))]
     tabs = st.tabs(tab_list)
-    
+
     for idx, (tab, report) in enumerate(zip(tabs, st.session_state.loaded_reports)):
         with tab:
-            # ATS Score
-            st.subheader(f"🎯 ATS Score: {report.get('atsScore', 0)}%")
-            
+            # ── Header row: ATS score + delete button side by side ──
+            col_title, col_delete = st.columns([8, 1])
+            with col_title:
+                st.subheader(f"🎯 ATS Score: {report.get('atsScore', 0)}%")
+            with col_delete:
+                st.write("")  # vertical spacing
+                if st.button("🗑️ Delete", key=f"delete_{report['_id']}"):
+                    try:
+                        del_res = requests.delete(
+                            f"http://localhost:5000/api/resume/delete-report/{report['_id']}",
+                            headers={"Authorization": f"Bearer {st.session_state.token}"}
+                        )
+                        if del_res.status_code == 200:
+                            # Remove from session state so UI updates instantly
+                            st.session_state.loaded_reports = [
+                                r for r in st.session_state.loaded_reports
+                                if r["_id"] != report["_id"]
+                            ]
+                            st.success(f"Report {idx + 1} deleted successfully!")
+                            st.rerun()
+                        elif del_res.status_code == 404:
+                            st.error("Report not found or already deleted.")
+                        else:
+                            st.error(f"Delete failed: {del_res.status_code}")
+                    except Exception as e:
+                        st.error(f"Connection error: {e}")
+
             # Matching Skills
             st.subheader("✅ Matching Skills")
             matched_skills = report.get("matchedSkills", [])
@@ -229,7 +253,7 @@ if st.session_state.loaded_reports:
                 st.write(" • " + " • ".join(missing_skills))
             else:
                 st.write("No missing skills found.")
-            
+
             # Suggestions
             st.subheader("💡 Suggestions")
             suggestions = report.get("suggestions", [])
@@ -237,5 +261,4 @@ if st.session_state.loaded_reports:
                 for s in suggestions:
                     st.write(f"- {s}")
             else:
-                st.write("No suggestions available.")
-            
+                st.write("No suggestions available.")

@@ -189,4 +189,27 @@ exports.getReports = async (req, res) => {
       error: error.message
     });
   }
-}
+};
+
+// 🔒 Delete Report
+exports.deleteReport = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const report = await Resume.findOneAndDelete({
+      _id: id,
+      userId: req.user.userId
+    });
+
+    if (!report) {
+      return res.status(404).json({ message: "Report not found or unauthorized" });
+    }
+
+    res.json({ message: "Report deleted successfully" });
+  } catch (error) {
+    console.log("ERROR 👉", error.response?.data || error.message || error);
+    res.status(500).json({
+      message: "Failed to delete report",
+      error: error.message
+    });
+  }
+};
