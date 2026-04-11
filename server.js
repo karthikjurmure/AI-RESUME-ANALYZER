@@ -2,7 +2,7 @@ require("dotenv").config();
 const mongoose = require("mongoose");
 const app = require("./app");
 
-// MongoDB Connection with enhanced logging
+// MongoDB Connection with enhanced
 mongoose.connect(process.env.MONGODB_URI)
 .then(() => {
     console.log("✅ MongoDB Connected Successfully");
