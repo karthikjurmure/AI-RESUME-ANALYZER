@@ -99,7 +99,7 @@ if st.button("Analyze Resume"):
     if not uploaded_file or not job_description.strip():
         st.error("Please upload resume and enter job description")
     else:
-        with st.spinner("Analyzing..."):
+        with st.spinner("AI is analyzing your resume..."):
             try:
                 # Prepare the file and data for the request
                 # IMPORTANT: Pass filename and MIME type so backend can validate
@@ -111,7 +111,7 @@ if st.button("Analyze Resume"):
                 if st.session_state.token:
                     headers["Authorization"] = f"Bearer {st.session_state.token}"
                 
-                # ADDED: The actual request logic that defines 'response'
+                import time
                 response = requests.post(
                     "http://localhost:5000/api/resume/analyze", 
                     files=files, 
@@ -120,12 +120,29 @@ if st.button("Analyze Resume"):
                 )
 
                 if response.status_code == 200:
-                    # Save to state
-                    st.session_state.analysis_result = response.json()
-                    st.success("Analysis Complete!")
+                    report_data = response.json()
+                    report_id = report_data.get("reportId")
+                    
+                    # Polling Loop
+                    status = "Processing"
+                    while status == "Processing":
+                        time.sleep(2)
+                        status_res = requests.get(f"http://localhost:5000/api/resume/status/{report_id}")
+                        if status_res.status_code == 200:
+                            current_report = status_res.json()
+                            status = current_report.get("status")
+                            if status == "Completed":
+                                st.session_state.analysis_result = current_report
+                                st.success("Analysis Complete!")
+                            elif status == "Failed":
+                                st.error("Analysis Failed. Please try again.")
+                                break
+                        else:
+                            st.error("Failed to check analysis status.")
+                            break
                     
                     # Auto-refresh previous reports if user is logged in
-                    if st.session_state.token:
+                    if st.session_state.token and status == "Completed":
                         try:
                             res = requests.get(
                                 "http://localhost:5000/api/resume/reports",

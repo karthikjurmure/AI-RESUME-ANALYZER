@@ -21,7 +21,8 @@ async function callAI(prompt) {
             role: "user",
             content: prompt
           }
-        ]
+        ],
+        max_tokens: 2000
       },
       { headers }
     );
@@ -126,10 +127,13 @@ ${jobDescription}
 
 Suggest improvements for a resume.
 
-Return ONLY JSON:
+Return ONLY JSON where "suggestions" is a list of plain strings:
 
 {
- "suggestions": []
+ "suggestions": [
+   "First suggestion...",
+   "Second suggestion..."
+ ]
 }
 `;
 

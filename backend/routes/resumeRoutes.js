@@ -26,6 +26,7 @@ router.post(
   upload.single("resume"),
   resumeController.analyzeResume
 );
+router.get("/status/:id", resumeController.getReportStatus);
 router.post("/download-report", resumeController.generatePDFReport);
 router.get("/reports", authMiddleware, resumeController.getReports);
 router.delete("/delete-report/:id", authMiddleware, resumeController.deleteReport);

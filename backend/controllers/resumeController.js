@@ -4,6 +4,7 @@ const aiService = require("../services/aiServices");
 const axios = require("axios");
 const matchingService = require("../services/matchingService");
 const pdfreportService = require("../services/pdfreportService");
+const { analysisQueue } = require("../config/queue");
 function extractJSON(text) {
   try {
     const match = text.match(/\{[\s\S]*\}/);
@@ -17,7 +18,6 @@ function extractJSON(text) {
 
 exports.analyzeResume = async (req, res) => {
   try {
-
     // 🔴 1. Validate file
     if (!req.file) {
       return res.status(400).json({
@@ -44,110 +44,56 @@ exports.analyzeResume = async (req, res) => {
       });
     }
 
-    // 🔵 3. AI Resume Analysis
-    const aiResume = await aiService.analyzeResume(text);
-    const resumeData = extractJSON(aiResume);
-    const resumeSkills = resumeData ? resumeData.skills : [];
-
-    if (!resumeSkills || resumeSkills.length === 0) {
-      return res.status(400).json({
-        message: "Failed to extract resume data"
-      });
-    }
-
-    // 🔵 4. AI Job Skills
-    const aiJob = await aiService.extractJobSkills(jobDescription);
-    const jobData = extractJSON(aiJob);
-    const jobSkills = jobData ? jobData.skills : [];
-
-    if (!jobSkills || jobSkills.length === 0) {
-      return res.status(400).json({
-        message: "Failed to extract job data"
-      });
-    }
-
-    // 🔵 5. Skill Matching
-    const result = await matchingService.matchSkills(
-      resumeSkills,
-      jobSkills
-    );
-
-    // 🔵 6. AI Suggestions
-    const aiSuggestions = await aiService.getSuggestions(
-      result.missingSkills,
-      jobDescription
-    );
-
-    console.log("AI Suggestions 👉", aiSuggestions);
-
-    const suggestionData = extractJSON(aiSuggestions);
-
-    const suggestions = suggestionData?.suggestions || [];
-
-    // 🔵 6a. Link Auditor
-    const urlRegex = /https?:\/\/[^\s]+|www\.[^\s]+|[a-zA-Z0-9-]+\.[a-zA-Z]{2,}(?:\/[^\s,)]+)/gi;
-    const extractedUrls = text.match(urlRegex) || [];
-    const uniqueUrls = [...new Set(extractedUrls)].filter(url => {
-      const lower = url.toLowerCase();
-      if (lower.startsWith('mailto:')) return false;
-      if (lower.includes('@') && !lower.startsWith('http')) return false;
-      if (lower.includes('node.js') || lower.includes('vue.js') || lower.includes('next.js') || lower.includes('nuxt.js') || lower.includes('react.js')) return false;
-      return true;
-    });
-
-    if (uniqueUrls.length > 0) {
-      try {
-        const linkAuditResult = await aiService.auditLinks(uniqueUrls);
-        if (linkAuditResult) {
-          // Parse JSON array returned by AI and spread each suggestion into the list
-          const arrMatch = linkAuditResult.match(/\[[\s\S]*\]/);
-          if (arrMatch) {
-            const linkSuggestions = JSON.parse(arrMatch[0]);
-            if (Array.isArray(linkSuggestions)) {
-              linkSuggestions.forEach(s => {
-                if (typeof s === 'string' && s.trim()) suggestions.push(s.trim());
-              });
-            }
-          }
-        }
-      } catch (err) {
-        console.log("Link Audit failed 👉", err.message);
-      }
-    }
-
-    // 🔵 7. Final Response
-    // 🔒 Save suggestions only if logged in
+    // 🔵 3. Save to MongoDB with 'Processing' status
     const reportData = {
       fileName: req.file.filename,
       filePath,
       text,
-      atsScore: result?.atsScore ?? 0,
-      matchedSkills: result.matchedSkills,
-      missingSkills: result.missingSkills,
+      status: 'Processing',
       createdAt: new Date()
     };
 
     if (req.user) {
-      // 🔒 Save reports WITH userId
       reportData.userId = req.user.userId;
-      reportData.suggestions = suggestions;
     }
 
     const savedResume = await Resume.create(reportData);
 
+    // 🔵 4. Add job to Queue
+    await analysisQueue.add("analyze-resume", {
+      reportId: savedResume._id,
+      resumeText: text,
+      jobDescription: jobDescription
+    });
+
+    // 🔵 5. Return reportId immediately
     res.json({
-      atsScore: result?.atsScore ?? 0,
-      matchedSkills: result.matchedSkills,
-      missingSkills: result.missingSkills,
-      suggestions
+      message: "Analysis started",
+      reportId: savedResume._id
     });
 
   } catch (error) {
-
-    console.log("ERROR 👉", error.response?.data || error.message || error);
-
+    console.log("ERROR 👉", error.message || error);
     res.status(500).json({
-      message: "Analysis failed",
+      message: "Failed to start analysis",
+      error: error.message
+    });
+  }
+};
+
+exports.getReportStatus = async (req, res) => {
+  try {
+    const { id } = req.params;
+    const report = await Resume.findById(id);
+
+    if (!report) {
+      return res.status(404).json({ message: "Report not found" });
+    }
+
+    res.json(report);
+  } catch (error) {
+    res.status(500).json({
+      message: "Failed to fetch status",
       error: error.message
     });
   }
