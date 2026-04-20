@@ -100,4 +100,3 @@ uvicorn ml-service.mlService:app --reload --port 8000
 
 ## ⚠️ Known Limitations & Performance
 - **Category Matching:** Currently, specific tools (e.g., "Jest") are matched with high precision, but high-level category parent matches (e.g., "Unit Testing") are handled by the AI Verification layer and may vary based on model performance.
-- **Cold Boot:** The first time an analysis is run, the backend will download the 23MB MiniLM model locally. Subsequent runs are instantaneous.
